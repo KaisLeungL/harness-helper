@@ -1,7 +1,7 @@
 // harness-helper 工具库 —— 仅使用 Node 内置模块,供 scan / generate / validate 复用。
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { access, chmod, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -256,39 +256,67 @@ const HARNESS_CANDIDATES = [
   'init.sh'
 ];
 
-// 找到 .harness/versions/ 下"最新"的版本目录，按目录 mtime 取最近修改的一个。
-// 没有则返回 null。仅用于让 validate/scan 能定位 versioned 布局的状态文件。
-// 用 mtime 而非按名称排序：版本号字符串排序会把 3.6.6.10 排到 3.6.6.5 之前，
-// 且不是所有项目都用语义化版本；mtime 与版本号格式无关，更稳健。
-export async function latestVersionDir(root) {
+// 列出 .harness/versions/ 下所有版本目录名（不排序、不猜测）。空则返回 []。
+export async function listVersionDirs(root) {
   const versionsRoot = path.join(root, '.harness', 'versions');
-  if (!(await exists(versionsRoot))) return null;
-  let entries = [];
+  if (!(await exists(versionsRoot))) return [];
   try {
-    entries = await readdir(versionsRoot, { withFileTypes: true });
+    const entries = await readdir(versionsRoot, { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
   } catch {
-    return null;
+    return [];
   }
-  const dirs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  if (!dirs.length) return null;
-  let latest = null;
-  for (const name of dirs) {
-    const full = path.join(versionsRoot, name);
-    let mtime = 0;
-    try {
-      mtime = (await stat(full)).mtimeMs;
-    } catch {
-      continue;
+}
+
+// 解析"当前版本目录"。不同项目版本号管理千差万别（semver / 日期 / 单调整数 /
+// git tag），所以**不靠任何排序假设**，按优先级：
+//   1. 显式 opts.version
+//   2. decisions.json 的 state.versionSource.command（与 generate/init.sh 同源）
+//   3. 都没有 → 返回 { dir: null, candidates: [...] } 交给上层（LLM）判断，绝不武断选一个
+// 返回 { dir, version, candidates, source }；dir 为 null 表示需要上层决定。
+export async function resolveVersionDir(root, opts = {}) {
+  const versionsRoot = path.join(root, '.harness', 'versions');
+  const candidates = await listVersionDirs(root);
+  if (!candidates.length) return { dir: null, version: null, candidates: [], source: 'none' };
+
+  const pick = (version, source) => {
+    if (version && candidates.includes(version)) {
+      return { dir: path.join(versionsRoot, version), version, candidates, source };
     }
-    if (!latest || mtime > latest.mtime) latest = { full, mtime };
+    return null;
+  };
+
+  // 1. 显式指定
+  const explicit = pick(opts.version, 'explicit');
+  if (explicit) return explicit;
+
+  // 2. decisions.json 的 versionSource.command
+  const decisionsPath = path.join(root, SCRATCHPAD_DIR, 'decisions.json');
+  if (await exists(decisionsPath)) {
+    try {
+      const decisions = await readJson(decisionsPath);
+      const command = decisions?.state?.versionSource?.command;
+      const resolved = await resolveVersion(root, command);
+      const bySource = pick(resolved, 'versionSource');
+      if (bySource) return bySource;
+    } catch {
+      // decisions.json 损坏或命令失败，落到候选交还
+    }
   }
-  return latest ? latest.full : null;
+
+  // 3. 唯一候选时无歧义，直接用；否则交还候选给上层判断
+  if (candidates.length === 1) {
+    return { dir: path.join(versionsRoot, candidates[0]), version: candidates[0], candidates, source: 'only' };
+  }
+  return { dir: null, version: null, candidates, source: 'ambiguous' };
 }
 
 // 加载 harness 产物供 scan/validate 评分。先看根目录（root 布局），
-// 再看 .harness/versions/<latest>/（versioned 布局）。状态文件按逻辑名归一，
-// 这样无论文件实际放哪，打分器都能找到——修掉 versioned 布局被误判缺失的问题。
-export async function loadHarnessFiles(root) {
+// 再看 versioned 布局的当前版本目录（版本由 resolveVersionDir 解析，不靠排序猜测）。
+// 状态文件按逻辑名归一，这样无论文件实际放哪，打分器都能找到。
+// opts.version 可显式指定要检查的版本。返回 files 数组，并挂 files.versionInfo
+// 供上层在版本有歧义时把候选交给 LLM 判断。
+export async function loadHarnessFiles(root, opts = {}) {
   const files = [];
   const seen = new Set();
   // path：逻辑名（评分用，与布局无关）；actualPath：相对 root 的真实路径（展示给用户用）。
@@ -303,17 +331,18 @@ export async function loadHarnessFiles(root) {
     if (await exists(fullPath)) add(candidate, candidate, await readText(fullPath));
   }
 
-  const versionDir = await latestVersionDir(root);
-  if (versionDir) {
+  const versionInfo = await resolveVersionDir(root, opts);
+  if (versionInfo.dir) {
     const versionedState = ['feature_list.json', 'feature-list.json', 'progress.md', 'session-handoff.md'];
     for (const candidate of versionedState) {
-      const fullPath = path.join(versionDir, candidate);
+      const fullPath = path.join(versionInfo.dir, candidate);
       if (await exists(fullPath)) {
         add(candidate, path.relative(root, fullPath), await readText(fullPath));
       }
     }
   }
 
+  files.versionInfo = versionInfo;
   return files;
 }
 

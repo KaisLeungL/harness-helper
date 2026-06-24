@@ -24,13 +24,21 @@ if (args.help) {
 
 const target = path.resolve(args.target || args._[0] || process.cwd());
 const minScore = Number(args.minScore || 70);
-const files = await loadHarnessFiles(target);
+const files = await loadHarnessFiles(target, { version: args.version });
+const versionInfo = files.versionInfo;
 const result = scoreHarness(files);
 
 if (args.json) {
-  console.log(JSON.stringify(result, null, 2));
+  console.log(JSON.stringify({ ...result, versionLayout: versionInfo }, null, 2));
 } else {
   console.log(formatScoreReport(result, target));
+  if (versionInfo && versionInfo.candidates.length) {
+    if (versionInfo.source === 'ambiguous') {
+      console.log(`注意：检测到多个版本目录 [${versionInfo.candidates.join(', ')}]，无法自动确定当前版本，本次未纳入版本化状态文件评分。请用 --version 指定，或确认 .harness-helper/decisions.json 的 versionSource。`);
+    } else {
+      console.log(`版本布局：已按 ${versionInfo.version} 评分（来源：${versionInfo.source}）。`);
+    }
+  }
   console.log('提示：结构分只衡量 harness 是否齐备自洽，真实效果仍需 before/after agent 会话验证。');
 }
 

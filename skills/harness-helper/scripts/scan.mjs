@@ -31,7 +31,8 @@ const target = path.resolve(args.target || args._[0] || process.cwd());
 const project = await detectProject(target);
 project.packageManager = detectPackageManager(target, args.packageManager);
 
-const harnessFiles = await loadHarnessFiles(target);
+const harnessFiles = await loadHarnessFiles(target, { version: args.version });
+const versionInfo = harnessFiles.versionInfo;
 const result = {
   target,
   stack: project.stack,
@@ -44,5 +45,17 @@ const result = {
   existingHarnessFiles: harnessFiles.map((file) => file.actualPath || file.path),
   subsystems: subsystemPresence(harnessFiles)
 };
+
+// versioned 布局：报告版本解析情况。source=ambiguous 时附候选，交由调用方（LLM）判断当前版本。
+if (versionInfo && versionInfo.candidates.length) {
+  result.versionLayout = {
+    resolvedVersion: versionInfo.version,
+    source: versionInfo.source,
+    candidates: versionInfo.candidates
+  };
+  if (versionInfo.source === 'ambiguous') {
+    result.versionLayout.note = '存在多个版本目录且无法从 decisions.json 的 versionSource 解析当前版本。请根据项目版本号管理方式判断哪个是当前版本，或用 --version 显式指定。';
+  }
+}
 
 console.log(JSON.stringify(result, null, 2));
