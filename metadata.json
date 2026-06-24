@@ -40,8 +40,11 @@
     "templates": [
       "templates/agents.md",
       "templates/feature-list.json",
+      "templates/feature-list.team.json",
       "templates/progress.md",
+      "templates/progress.team.md",
       "templates/session-handoff.md",
+      "templates/session-handoff.team.md",
       "templates/decisions.schema.json"
     ]
   }
