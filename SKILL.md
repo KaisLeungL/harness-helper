@@ -53,7 +53,9 @@ node <skill>/scripts/scan.mjs --target <target>
 顺序与要问出的内容：
 
 1. **指令 (Instructions)** — 用 AGENTS.md 还是 CLAUDE.md；项目用途一句话；除默认启动步骤外还要做什么。
-2. **状态 (State)** — 见第 4 步 Scope 一并问出 features（状态与范围共用 feature list）。先确认是否需要 progress.md（默认要）。
+2. **状态 (State)** — 见第 4 步 Scope 一并问出 features（状态与范围共用 feature list）。先确认是否需要 progress.md（默认要）。**再问两个布局开关**：
+   - **协作模式**（`collaboration.mode`）：单人项目 `solo`（默认）；多人协作 `team` —— `progress.md` / `session-handoff.md` 改成 `## @<git user.name>` 分节 + `merge=union` 追加式合并（多人同时追加各自节点永不冲突），`feature_list.json` 加 `owner` 字段（一个功能只由一人维护其条目）。**怎么判断**：scan 的 `gitState` 显示多作者、或用户提到团队/协作，就推荐 `team`。
+   - **状态布局**（`state.layout`）：`root`（默认，状态文件放根目录）；`versioned`（放 `.harness/versions/<版本>/`，按版本维度组织）。**怎么判断**：项目有明确发版节奏（版本号写在某个文件里）就推荐 `versioned`，并问出**版本来源命令**（`state.versionSource.command`：一条打印版本号到 stdout 的 shell，如 `cat VERSION`、`node -p "require('./package.json').version"`；generate.mjs 与 init.sh 共用它）。
 3. **验证 (Verification)** — 装依赖 / 类型检查 / lint / 测试 / 构建 / 端到端各用什么命令。scan 已给推荐命令，确认或修正。
 4. **范围 (Scope)** — 这个项目接下来要做哪 3-5 件具体功能？依赖关系？每件“完成”的判定标准？是否强制一次一个功能？有无额外范围红线。**这一步问出的功能直接成为 feature_list 的真实条目**；实在问不出来才退回占位模板。
 5. **生命周期 (Lifecycle)** — 是否需要 session-handoff.md（多会话/大任务建议要）；会话结束流程要补什么。
@@ -76,13 +78,22 @@ decisions.json 形如：
 
 ```json
 {
-  "instructions": { "agentFile": "AGENTS.md", "purpose": "...", "startupSteps": ["..."] },
-  "state":        { "features": [{ "id": "feat-001", "name": "...", "description": "...", "dependencies": [], "status": "not-started" }] },
-  "verification": { "commands": ["npm install", "npm run check", "npm test"] },
-  "scope":        { "oneFeatureAtATime": true, "extraRules": ["..."], "doneCriteria": ["..."] },
-  "lifecycle":    { "useHandoff": true, "endOfSessionSteps": ["..."] }
+  "instructions":  { "agentFile": "AGENTS.md", "purpose": "...", "startupSteps": ["..."] },
+  "state":         {
+    "layout": "root",
+    "versionSource": { "command": "cat VERSION", "label": "VERSION 文件" },
+    "features": [{ "id": "feat-001", "name": "...", "description": "...", "owner": "...", "dependencies": [], "status": "not-started" }]
+  },
+  "verification":  { "commands": ["npm install", "npm run check", "npm test"] },
+  "scope":         { "oneFeatureAtATime": true, "extraRules": ["..."], "doneCriteria": ["..."] },
+  "lifecycle":     { "useHandoff": true, "endOfSessionSteps": ["..."] },
+  "collaboration": { "mode": "solo" }
 }
 ```
+
+- `state.layout`：`root`（默认）或 `versioned`。选 `versioned` 时必须给 `state.versionSource.command`。
+- `state.features[].owner`：仅 `collaboration.mode=team` 时有意义。
+- `collaboration.mode`：`solo`（默认）或 `team`。`team` 触发 `## @author` 分节 + `merge=union` 合并。
 
 ### 第 4 步：摘要拍板
 
@@ -94,10 +105,14 @@ decisions.json 形如：
 node <skill>/scripts/generate.mjs --target <target>
 ```
 
-读 `<target>/.harness-helper/decisions.json`，生成 5 件中文产物：
+读 `<target>/.harness-helper/decisions.json`，生成中文产物：
 `AGENTS.md`（或 CLAUDE.md）、`feature_list.json`、`progress.md`、`session-handoff.md`、`init.sh`。
 
-**写盘安全**：同名文件已存在时**默认不覆盖**，新内容写成 `<name>.proposed`。生成后提示用户对存在 `.proposed` 的文件做 `diff` 后手动合并。确认要覆盖时才加 `--force`。
+布局相关的额外产物：
+- `state.layout=versioned`：状态文件写进 `.harness/versions/<版本>/`，并在 `.harness/templates/` 生成初始化模板（`init.sh` 在版本目录缺失时据此创建新版本）。
+- `collaboration.mode=team`：`progress.md` / `session-handoff.md` 用 `## @author` 分节模板；幂等地把 `merge=union` 规则并入 `<target>/.gitattributes`（已有则只追加缺失行）。
+
+**写盘安全**：同名文件已存在时**默认不覆盖**，新内容写成 `<name>.proposed`。生成后提示用户对存在 `.proposed` 的文件做 `diff` 后手动合并。确认要覆盖时才加 `--force`。`.gitattributes` 是幂等并入，不会覆盖既有内容。
 
 ### 第 6 步：结构自检
 
@@ -117,17 +132,21 @@ node <skill>/scripts/validate.mjs --target <target>
 - 默认一次一个功能，除非 harness 有显式的多 agent 归属边界（lecture 07/08）。
 - 优先用文件持久化状态，别依赖对话历史（lecture 03/12）。
 - 绝不在脚本里藏破坏性行为；覆盖已有文件必须经用户明确同意。
+- 团队协作的状态文件（progress/handoff）用 `merge=union` + `## @author` 分节，让多人追加永不冲突；但 union 只对**追加式**安全，必须配“只追加不改写”的纪律。共享清单（feature_list）走正常合并，靠“一个条目一个 owner”降冲突。
+- 状态文件位置（root vs versioned）和协作模式（solo vs team）是两个**正交开关**，按项目实际拷问决定，不要默认套用某一种。
 
 ## 交付清单
 
 部署完成后，目标项目应留下：
 
 - [ ] `AGENTS.md` 或 `CLAUDE.md`
-- [ ] `feature_list.json`（功能尽量来自真实拷问）
+- [ ] `feature_list.json`（功能尽量来自真实拷问；team 模式带 `owner`）
 - [ ] `progress.md`
 - [ ] `init.sh`
 - [ ] `session-handoff.md`（多会话时）
 - [ ] `<target>/.harness-helper/decisions.md` + `decisions.json`（本轮决策回溯）
+- [ ] 若 `state.layout=versioned`：状态文件在 `.harness/versions/<版本>/`，`.harness/templates/` 有初始化模板
+- [ ] 若 `collaboration.mode=team`：`.gitattributes` 含 `merge=union` 规则
 - [ ] 若有 `.proposed` 文件：已提示用户 diff 合并
 
 如果无法直接写文件，就把确切的文件内容和命令给用户。

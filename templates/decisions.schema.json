@@ -22,6 +22,20 @@
       "type": "object",
       "required": ["features"],
       "properties": {
+        "layout": {
+          "type": "string",
+          "enum": ["root", "versioned"],
+          "default": "root",
+          "description": "root=状态文件放项目根目录（单人/小项目）；versioned=放 .harness/versions/<版本>/，按版本维度组织（团队/有发版节奏）"
+        },
+        "versionSource": {
+          "type": "object",
+          "description": "layout=versioned 时，如何解析当前版本号。command 是一条打印版本号到 stdout 的 shell；generate.mjs 与 init.sh 共用它，保证两边同步。命令由项目自身决定（如读版本文件、清单字段或 VCS 标签）。",
+          "properties": {
+            "command": { "type": "string", "description": "打印版本号到 stdout 的 shell 命令，例如 cat VERSION 或 node -p \"require('./package.json').version\"" },
+            "label": { "type": "string", "description": "版本来源说明，例如 VERSION 文件、清单的 version 字段" }
+          }
+        },
         "features": {
           "type": "array",
           "items": {
@@ -31,6 +45,7 @@
               "id": { "type": "string" },
               "name": { "type": "string" },
               "description": { "type": "string" },
+              "owner": { "type": "string", "description": "collaboration.mode=team 时，该功能的负责人（git user.name）；一个工单只由一人维护其条目，减少合并冲突" },
               "dependencies": { "type": "array", "items": { "type": "string" } },
               "status": { "type": "string", "enum": ["not-started", "in-progress", "pass", "fail"] },
               "evidence": { "type": "string" }
@@ -67,6 +82,18 @@
       "properties": {
         "useHandoff": { "type": "boolean", "default": true },
         "endOfSessionSteps": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "collaboration": {
+      "type": "object",
+      "description": "团队协作策略。决定 progress.md / session-handoff.md 是否按 git 作者分节并用 merge=union 合并，以及 feature_list 是否带 owner 字段。",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["solo", "team"],
+          "default": "solo",
+          "description": "solo=单人，状态文件普通格式；team=多人，progress/handoff 用 ## @<git user.name> 分节 + merge=union 追加式合并，feature_list 加 owner 字段"
+        }
       }
     }
   }

@@ -86,6 +86,35 @@ export async function writeProtected(targetPath, contents, { force = false, exec
   return { path: targetPath, status: force && alreadyExists ? 'overwritten' : 'written' };
 }
 
+// 解析版本号：跑 versionSource.command（一条打印版本号到 stdout 的 shell）。
+// generate.mjs 与 init.sh 共用同一条命令，保证两边同步。失败返回 null。
+export async function resolveVersion(root, command) {
+  if (!command) return null;
+  try {
+    const { stdout } = await execFileAsync('bash', ['-c', command], { cwd: root });
+    const value = stdout.trim().split('\n')[0].trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
+// 把若干 gitattributes 行幂等地并入 <root>/.gitattributes：
+// 已存在则只追加缺失行，不存在则新建。返回 { path, status, added }。
+export async function mergeGitAttributes(root, lines) {
+  const targetPath = path.join(root, '.gitattributes');
+  const wanted = lines.map((line) => line.trimEnd()).filter(Boolean);
+  let existing = '';
+  if (await exists(targetPath)) existing = await readText(targetPath);
+  const existingLines = new Set(existing.split('\n').map((line) => line.trim()));
+  const missing = wanted.filter((line) => !existingLines.has(line.trim()));
+  if (!missing.length) return { path: targetPath, status: 'unchanged', added: [] };
+  const header = existing && !existing.endsWith('\n') ? '\n' : '';
+  const block = `${existing}${header}${existing ? '\n' : ''}${missing.join('\n')}\n`;
+  await writeText(targetPath, block);
+  return { path: targetPath, status: existing ? 'appended' : 'written', added: missing };
+}
+
 export function detectPackageManager(root, explicit) {
   if (explicit) return explicit;
   if (existsSync(path.join(root, 'bun.lockb')) || existsSync(path.join(root, 'bun.lock'))) return 'bun';
@@ -227,14 +256,48 @@ const HARNESS_CANDIDATES = [
   'init.sh'
 ];
 
+// 找到 .harness/versions/ 下"最新"的版本目录（按名称排序取最后一个）。
+// 没有则返回 null。仅用于让 validate/scan 能定位 versioned 布局的状态文件。
+export async function latestVersionDir(root) {
+  const versionsRoot = path.join(root, '.harness', 'versions');
+  if (!(await exists(versionsRoot))) return null;
+  let entries = [];
+  try {
+    entries = await readdir(versionsRoot, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const dirs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  if (!dirs.length) return null;
+  return path.join(versionsRoot, dirs[dirs.length - 1]);
+}
+
+// 加载 harness 产物供 scan/validate 评分。先看根目录（root 布局），
+// 再看 .harness/versions/<latest>/（versioned 布局）。状态文件按逻辑名归一，
+// 这样无论文件实际放哪，打分器都能找到——修掉 versioned 布局被误判缺失的问题。
 export async function loadHarnessFiles(root) {
   const files = [];
+  const seen = new Set();
+  const add = (logicalName, content) => {
+    if (seen.has(logicalName)) return;
+    seen.add(logicalName);
+    files.push({ path: logicalName, content });
+  };
+
   for (const candidate of HARNESS_CANDIDATES) {
     const fullPath = path.join(root, candidate);
-    if (await exists(fullPath)) {
-      files.push({ path: candidate, content: await readText(fullPath) });
+    if (await exists(fullPath)) add(candidate, await readText(fullPath));
+  }
+
+  const versionDir = await latestVersionDir(root);
+  if (versionDir) {
+    const versionedState = ['feature_list.json', 'feature-list.json', 'progress.md', 'session-handoff.md'];
+    for (const candidate of versionedState) {
+      const fullPath = path.join(versionDir, candidate);
+      if (await exists(fullPath)) add(candidate, await readText(fullPath));
     }
   }
+
   return files;
 }
 

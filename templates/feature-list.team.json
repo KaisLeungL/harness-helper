@@ -1,0 +1,15 @@
+{
+  "version": "{{VERSION}}",
+  "note": "team 模式：一个功能只由一人维护其条目（owner 字段），减少合并冲突。功能 id 建议对齐你们的工单号。status: not-started | in-progress | pass | fail",
+  "features": [
+    {
+      "id": "feat-001",
+      "name": "示例功能（占位，请替换）",
+      "description": "替换为真实功能/工单：写清目标与完成判定。一次只推进一个未完成功能。",
+      "owner": "your-git-username",
+      "dependencies": [],
+      "status": "not-started",
+      "evidence": ""
+    }
+  ]
+}
