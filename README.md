@@ -23,9 +23,9 @@
 全部仅用 Node 内置模块，拷进任何仓库即可运行。
 
 ```bash
-node scripts/scan.mjs     --target /path/to/project   # 静态扫描，输出 JSON 事实
-node scripts/generate.mjs --target /path/to/project   # 读 decisions.json 生成产物
-node scripts/validate.mjs --target /path/to/project   # 五子系统结构打分
+node skills/harness-helper/scripts/scan.mjs     --target /path/to/project   # 静态扫描，输出 JSON 事实
+node skills/harness-helper/scripts/generate.mjs --target /path/to/project   # 读 decisions.json 生成产物
+node skills/harness-helper/scripts/validate.mjs --target /path/to/project   # 五子系统结构打分
 ```
 
 ## 产物
@@ -42,13 +42,13 @@ node scripts/validate.mjs --target /path/to/project   # 五子系统结构打分
 
 grill 过程的决策暂存在**目标项目**的 `.harness-helper/`：
 - `decisions.md` —— 人读的拷问 Q&A 回溯
-- `decisions.json` —— 机读的结构化决策（generate.mjs 读取，结构见 `templates/decisions.schema.json`）
+- `decisions.json` —— 机读的结构化决策（generate.mjs 读取，结构见 `skills/harness-helper/templates/decisions.schema.json`）
 
 建议把 `.harness-helper/` 加进项目 `.gitignore`（本 skill 不替你改 .gitignore）。
 
 ## 五子系统
 
-部署的思想来自《Learn Harness Engineering》12 讲，压缩为五个可操作子系统，详见 `references/five-subsystems-zh.md`：
+部署的思想来自《Learn Harness Engineering》12 讲，压缩为五个可操作子系统，详见 `skills/harness-helper/references/five-subsystems-zh.md`：
 
 1. 指令 (Instructions) — lecture 02/04
 2. 状态 (State) — lecture 08
