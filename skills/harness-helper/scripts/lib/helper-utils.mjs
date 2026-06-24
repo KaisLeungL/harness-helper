@@ -1,7 +1,7 @@
 // harness-helper 工具库 —— 仅使用 Node 内置模块,供 scan / generate / validate 复用。
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { access, chmod, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -256,8 +256,10 @@ const HARNESS_CANDIDATES = [
   'init.sh'
 ];
 
-// 找到 .harness/versions/ 下"最新"的版本目录（按名称排序取最后一个）。
+// 找到 .harness/versions/ 下"最新"的版本目录，按目录 mtime 取最近修改的一个。
 // 没有则返回 null。仅用于让 validate/scan 能定位 versioned 布局的状态文件。
+// 用 mtime 而非按名称排序：版本号字符串排序会把 3.6.6.10 排到 3.6.6.5 之前，
+// 且不是所有项目都用语义化版本；mtime 与版本号格式无关，更稳健。
 export async function latestVersionDir(root) {
   const versionsRoot = path.join(root, '.harness', 'versions');
   if (!(await exists(versionsRoot))) return null;
@@ -267,9 +269,20 @@ export async function latestVersionDir(root) {
   } catch {
     return null;
   }
-  const dirs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  const dirs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
   if (!dirs.length) return null;
-  return path.join(versionsRoot, dirs[dirs.length - 1]);
+  let latest = null;
+  for (const name of dirs) {
+    const full = path.join(versionsRoot, name);
+    let mtime = 0;
+    try {
+      mtime = (await stat(full)).mtimeMs;
+    } catch {
+      continue;
+    }
+    if (!latest || mtime > latest.mtime) latest = { full, mtime };
+  }
+  return latest ? latest.full : null;
 }
 
 // 加载 harness 产物供 scan/validate 评分。先看根目录（root 布局），
@@ -278,15 +291,16 @@ export async function latestVersionDir(root) {
 export async function loadHarnessFiles(root) {
   const files = [];
   const seen = new Set();
-  const add = (logicalName, content) => {
+  // path：逻辑名（评分用，与布局无关）；actualPath：相对 root 的真实路径（展示给用户用）。
+  const add = (logicalName, actualPath, content) => {
     if (seen.has(logicalName)) return;
     seen.add(logicalName);
-    files.push({ path: logicalName, content });
+    files.push({ path: logicalName, actualPath, content });
   };
 
   for (const candidate of HARNESS_CANDIDATES) {
     const fullPath = path.join(root, candidate);
-    if (await exists(fullPath)) add(candidate, await readText(fullPath));
+    if (await exists(fullPath)) add(candidate, candidate, await readText(fullPath));
   }
 
   const versionDir = await latestVersionDir(root);
@@ -294,7 +308,9 @@ export async function loadHarnessFiles(root) {
     const versionedState = ['feature_list.json', 'feature-list.json', 'progress.md', 'session-handoff.md'];
     for (const candidate of versionedState) {
       const fullPath = path.join(versionDir, candidate);
-      if (await exists(fullPath)) add(candidate, await readText(fullPath));
+      if (await exists(fullPath)) {
+        add(candidate, path.relative(root, fullPath), await readText(fullPath));
+      }
     }
   }
 

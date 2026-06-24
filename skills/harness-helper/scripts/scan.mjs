@@ -41,7 +41,7 @@ const result = {
     ? verificationCommands(project, args.packageManager)
     : verificationCommands(project),
   gitState: await gitState(target),
-  existingHarnessFiles: harnessFiles.map((file) => file.path),
+  existingHarnessFiles: harnessFiles.map((file) => file.actualPath || file.path),
   subsystems: subsystemPresence(harnessFiles)
 };
 
