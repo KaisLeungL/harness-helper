@@ -1,0 +1,48 @@
+{
+  "name": "harness-helper",
+  "version": "1.0.0",
+  "description": "以 grill 拷问的方式引导用户在项目中部署 harness：先静态扫描，再按五子系统逐个拷问、形成决策、生成产物并自检打分。",
+  "license": "MIT",
+  "author": "Learn Harness Engineering",
+  "repository": "https://github.com/walkinglabs/learn-harness-engineering",
+  "languages": ["zh"],
+  "compatibility": {
+    "minCliVersion": "0.1.0",
+    "agents": ["claude-code", "codex-cli", "cursor", "windsurf", "generic"]
+  },
+  "entryPoint": "SKILL.md",
+  "trigger": "/harness-helper",
+  "references": [
+    "references/five-subsystems-zh.md"
+  ],
+  "triggers": [
+    "harness-helper",
+    "部署 harness",
+    "部署harness",
+    "harness 部署",
+    "引导部署 harness",
+    "AGENTS.md",
+    "feature_list.json",
+    "harness engineering",
+    "agent 可靠性",
+    "会话连续性",
+    "验证流程",
+    "范围控制"
+  ],
+  "bundled": {
+    "scripts": [
+      "scripts/scan.mjs",
+      "scripts/generate.mjs",
+      "scripts/validate.mjs",
+      "scripts/lib/helper-utils.mjs"
+    ],
+    "assets": [],
+    "templates": [
+      "templates/agents.md",
+      "templates/feature-list.json",
+      "templates/progress.md",
+      "templates/session-handoff.md",
+      "templates/decisions.schema.json"
+    ]
+  }
+}

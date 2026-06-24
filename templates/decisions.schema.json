@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "harness-helper decisions",
+  "description": "grill 拷问得出的五子系统决策。generate.mjs 读取此结构生成 harness 产物。",
+  "type": "object",
+  "required": ["instructions", "state", "verification", "scope", "lifecycle"],
+  "properties": {
+    "instructions": {
+      "type": "object",
+      "required": ["agentFile", "purpose"],
+      "properties": {
+        "agentFile": { "type": "string", "enum": ["AGENTS.md", "CLAUDE.md"] },
+        "purpose": { "type": "string", "description": "项目用途一句话" },
+        "startupSteps": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "额外的启动步骤（可选，会并入默认启动流程）"
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "required": ["features"],
+      "properties": {
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "description", "status"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "dependencies": { "type": "array", "items": { "type": "string" } },
+              "status": { "type": "string", "enum": ["not-started", "in-progress", "pass", "fail"] },
+              "evidence": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["commands"],
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "init.sh 里依次执行的验证命令"
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "oneFeatureAtATime": { "type": "boolean", "default": true },
+        "extraRules": { "type": "array", "items": { "type": "string" } },
+        "doneCriteria": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "完成的定义清单"
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "properties": {
+        "useHandoff": { "type": "boolean", "default": true },
+        "endOfSessionSteps": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

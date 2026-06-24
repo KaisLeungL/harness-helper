@@ -1,0 +1,4 @@
+.harness-helper/
+node_modules/
+*.proposed
+.DS_Store
